@@ -2,7 +2,7 @@
 #![allow(clippy::nonstandard_macro_braces)] // needed because clippy does not understand proc macro of pyo3
 #![allow(clippy::transmute_undefined_repr)]
 extern crate core;
-extern crate polars;
+extern crate polars as polars1;
 
 #[cfg(feature = "build_info")]
 #[macro_use]
@@ -40,8 +40,8 @@ use jemallocator::Jemalloc;
 use lazy::ToExprs;
 #[cfg(any(not(target_os = "linux"), use_mimalloc))]
 use mimalloc::MiMalloc;
-use polars::functions::{diag_concat_df, hor_concat_df};
-use polars::prelude::Null;
+use polars1::functions::{diag_concat_df, hor_concat_df};
+use polars1::prelude::Null;
 use polars_core::datatypes::{TimeUnit, TimeZone};
 use polars_core::prelude::{DataFrame, IntoSeries, IDX_DTYPE};
 use polars_core::POOL;
@@ -143,32 +143,32 @@ fn cumreduce(lambda: PyObject, exprs: Vec<PyExpr>) -> PyExpr {
 
 #[pyfunction]
 fn arange(low: PyExpr, high: PyExpr, step: usize) -> PyExpr {
-    polars::lazy::dsl::arange(low.inner, high.inner, step).into()
+    polars1::lazy::dsl::arange(low.inner, high.inner, step).into()
 }
 
 #[pyfunction]
 fn repeat(value: &PyAny, n_times: PyExpr) -> PyResult<PyExpr> {
     if let Ok(true) = value.is_instance_of::<PyBool>() {
         let val = value.extract::<bool>().unwrap();
-        Ok(polars::lazy::dsl::repeat(val, n_times.inner).into())
+        Ok(polars1::lazy::dsl::repeat(val, n_times.inner).into())
     } else if let Ok(int) = value.downcast::<PyInt>() {
         let val = int.extract::<i64>().unwrap();
 
         if val > 0 && val < i32::MAX as i64 || val < 0 && val > i32::MIN as i64 {
-            Ok(polars::lazy::dsl::repeat(val as i32, n_times.inner).into())
+            Ok(polars1::lazy::dsl::repeat(val as i32, n_times.inner).into())
         } else {
-            Ok(polars::lazy::dsl::repeat(val, n_times.inner).into())
+            Ok(polars1::lazy::dsl::repeat(val, n_times.inner).into())
         }
     } else if let Ok(float) = value.downcast::<PyFloat>() {
         let val = float.extract::<f64>().unwrap();
-        Ok(polars::lazy::dsl::repeat(val, n_times.inner).into())
+        Ok(polars1::lazy::dsl::repeat(val, n_times.inner).into())
     } else if let Ok(pystr) = value.downcast::<PyString>() {
         let val = pystr
             .to_str()
             .expect("could not transform Python string to Rust Unicode");
-        Ok(polars::lazy::dsl::repeat(val, n_times.inner).into())
+        Ok(polars1::lazy::dsl::repeat(val, n_times.inner).into())
     } else if value.is_none() {
-        Ok(polars::lazy::dsl::repeat(Null {}, n_times.inner).into())
+        Ok(polars1::lazy::dsl::repeat(Null {}, n_times.inner).into())
     } else {
         Err(PyValueError::new_err(format!(
             "could not convert value {:?} as a Literal",
@@ -179,7 +179,7 @@ fn repeat(value: &PyAny, n_times: PyExpr) -> PyResult<PyExpr> {
 
 #[pyfunction]
 fn pearson_corr(a: dsl::PyExpr, b: dsl::PyExpr, ddof: u8) -> dsl::PyExpr {
-    polars::lazy::dsl::pearson_corr(a.inner, b.inner, ddof).into()
+    polars1::lazy::dsl::pearson_corr(a.inner, b.inner, ddof).into()
 }
 
 #[pyfunction]
@@ -189,12 +189,12 @@ fn spearman_rank_corr(
     ddof: u8,
     propagate_nans: bool,
 ) -> dsl::PyExpr {
-    polars::lazy::dsl::spearman_rank_corr(a.inner, b.inner, ddof, propagate_nans).into()
+    polars1::lazy::dsl::spearman_rank_corr(a.inner, b.inner, ddof, propagate_nans).into()
 }
 
 #[pyfunction]
 fn cov(a: dsl::PyExpr, b: dsl::PyExpr) -> dsl::PyExpr {
-    polars::lazy::dsl::cov(a.inner, b.inner).into()
+    polars1::lazy::dsl::cov(a.inner, b.inner).into()
 }
 
 #[pyfunction]
@@ -202,8 +202,8 @@ fn argsort_by(by: Vec<dsl::PyExpr>, reverse: Vec<bool>) -> dsl::PyExpr {
     let by = by
         .into_iter()
         .map(|e| e.inner)
-        .collect::<Vec<polars::lazy::dsl::Expr>>();
-    polars::lazy::dsl::argsort_by(by, &reverse).into()
+        .collect::<Vec<polars1::lazy::dsl::Expr>>();
+    polars1::lazy::dsl::argsort_by(by, &reverse).into()
 }
 
 #[pyfunction]
@@ -219,24 +219,24 @@ fn version() -> &'static str {
 
 #[pyfunction]
 fn toggle_string_cache(toggle: bool) {
-    polars::toggle_string_cache(toggle)
+    polars1::toggle_string_cache(toggle)
 }
 
 #[pyfunction]
 fn using_string_cache() -> bool {
-    polars::using_string_cache()
+    polars1::using_string_cache()
 }
 
 #[pyfunction]
 fn concat_str(s: Vec<dsl::PyExpr>, sep: &str) -> dsl::PyExpr {
     let s = s.into_iter().map(|e| e.inner).collect::<Vec<_>>();
-    polars::lazy::dsl::concat_str(s, sep).into()
+    polars1::lazy::dsl::concat_str(s, sep).into()
 }
 
 #[pyfunction]
 fn concat_lst(s: Vec<dsl::PyExpr>) -> dsl::PyExpr {
     let s = s.into_iter().map(|e| e.inner).collect::<Vec<_>>();
-    polars::lazy::dsl::concat_lst(s).into()
+    polars1::lazy::dsl::concat_lst(s).into()
 }
 
 #[pyfunction]
@@ -264,7 +264,7 @@ fn py_datetime(
         microsecond,
     };
 
-    polars::lazy::dsl::datetime(args).into()
+    polars1::lazy::dsl::datetime(args).into()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -290,7 +290,7 @@ fn py_duration(
         weeks: weeks.map(|e| e.inner),
     };
 
-    polars::lazy::dsl::duration(args).into()
+    polars1::lazy::dsl::duration(args).into()
 }
 
 #[pyfunction]
@@ -346,7 +346,7 @@ fn concat_lf(lfs: &PyAny, rechunk: bool, parallel: bool) -> PyResult<PyLazyFrame
         lfs.push(lf);
     }
 
-    let lf = polars::lazy::dsl::concat(lfs, rechunk, parallel).map_err(PyPolarsErr::from)?;
+    let lf = polars1::lazy::dsl::concat(lfs, rechunk, parallel).map_err(PyPolarsErr::from)?;
     Ok(lf.into())
 }
 
@@ -484,7 +484,7 @@ fn py_date_range(
     tu: Wrap<TimeUnit>,
     tz: Option<TimeZone>,
 ) -> PySeries {
-    polars::time::date_range_impl(
+    polars1::time::date_range_impl(
         name,
         start,
         stop,
@@ -509,37 +509,37 @@ fn py_date_range_lazy(
     let start = start.inner;
     let end = end.inner;
     let every = Duration::parse(every);
-    polars::lazy::dsl::functions::date_range(name, start, end, every, closed.0, tz).into()
+    polars1::lazy::dsl::functions::date_range(name, start, end, every, closed.0, tz).into()
 }
 
 #[pyfunction]
 fn min_exprs(exprs: Vec<PyExpr>) -> PyExpr {
     let exprs = exprs.to_exprs();
-    polars::lazy::dsl::min_exprs(exprs).into()
+    polars1::lazy::dsl::min_exprs(exprs).into()
 }
 
 #[pyfunction]
 fn max_exprs(exprs: Vec<PyExpr>) -> PyExpr {
     let exprs = exprs.to_exprs();
-    polars::lazy::dsl::max_exprs(exprs).into()
+    polars1::lazy::dsl::max_exprs(exprs).into()
 }
 
 #[pyfunction]
 fn coalesce_exprs(exprs: Vec<PyExpr>) -> PyExpr {
     let exprs = exprs.to_exprs();
-    polars::lazy::dsl::coalesce(&exprs).into()
+    polars1::lazy::dsl::coalesce(&exprs).into()
 }
 
 #[pyfunction]
 fn sum_exprs(exprs: Vec<PyExpr>) -> PyExpr {
     let exprs = exprs.to_exprs();
-    polars::lazy::dsl::sum_exprs(exprs).into()
+    polars1::lazy::dsl::sum_exprs(exprs).into()
 }
 
 #[pyfunction]
 fn as_struct(exprs: Vec<PyExpr>) -> PyExpr {
     let exprs = exprs.to_exprs();
-    polars::lazy::dsl::as_struct(&exprs).into()
+    polars1::lazy::dsl::as_struct(&exprs).into()
 }
 
 #[pyfunction]
@@ -549,7 +549,7 @@ fn pool_size() -> usize {
 
 #[pyfunction]
 fn arg_where(condition: PyExpr) -> PyExpr {
-    polars::lazy::dsl::arg_where(condition.inner).into()
+    polars1::lazy::dsl::arg_where(condition.inner).into()
 }
 
 #[pyfunction]

@@ -1646,6 +1646,9 @@ class DataFrame:
             {k: v for k, v in zip(names, pydf.row_tuple(i))}
             for i in range(0, self.height)
         ]
+        
+    def start_datetime_c_api(self):
+        self._df.start_datetime_c_api()
 
     def to_numpy(self) -> np.ndarray[Any, Any]:
         """

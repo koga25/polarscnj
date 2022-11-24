@@ -1,14 +1,14 @@
 [package]
 name = "py-polars"
 version = "0.14.31"
-authors = ["ritchie46 <ritchie46@gmail.com>"]
+authors = ["koga25 <lucasvas100@gmail.com>"]
 documentation = "https://pola-rs.github.io/polars/py-polars/html/reference/index.html"
 edition = "2021"
-homepage = "https://github.com/pola-rs/polars"
+homepage = "https://github.com/koga25/polars-private"
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/pola-rs/polars"
-description = "Blazingly fast DataFrame library"
+repository = "https://github.com/koga25/polars-private"
+description = "Fork from polars repository, faster conversions to python. All of this was made possible by the incredible work of ritchie46."
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -26,14 +26,19 @@ bincode = "1.3"
 # todo: unfix when compilation problem is solved
 libc = "0.2"
 ndarray = "0.15"
-numpy = "0.16"
+numpy = "0.17.2"
 once_cell = "1"
 polars-core = { path = "../polars/polars-core", default-features = false }
 polars-lazy = { path = "../polars/polars-lazy", features = ["python"], default-features = false }
-pyo3 = { version = "0.16", features = ["abi3-py37", "extension-module", "multiple-pymethods"] }
+pyo3 = { version = "0.17.3", features = ["extension-module", "multiple-pymethods"] }
 pyo3-built = { version = "0.4", optional = true }
 serde_json = { version = "1", optional = true }
 thiserror = "^1.0"
+chrono = "0.4"
+
+[dependencies.pyo3-ffi]
+version = "*"
+features = ["extension-module"]
 
 # features are only there to enable building a slim binary for the benchmark in CI
 [features]
