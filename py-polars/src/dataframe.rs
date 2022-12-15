@@ -18,8 +18,10 @@ use polars_core::prelude::QuantileInterpolOptions;
 use polars_core::utils::arrow::compute::cast::CastOptions;
 use polars_core::utils::try_get_supertype;
 use polars_lazy::frame::pivot::{pivot, pivot_stable};
+
 use pyo3::prelude::*;
 use pyo3::types::*;
+use polars_core::utils::rayon::prelude::*;
 
 use crate::apply::dataframe::{
     apply_lambda_unknown, apply_lambda_with_bool_out_type, apply_lambda_with_primitive_out_type,
@@ -570,9 +572,8 @@ impl PyDataFrame {
         Ok(())
     }
 
-    pub fn row_tuple2(&self, idx: i64) -> Py<PyTuple> {
+    pub fn row_tuple2(&self) -> Py<PyTuple> {
         let (height, width) = self.df.shape();
-        let index = idx as usize; 
         Python::with_gil(|py| {
             unsafe {
                 let list = pyo3_ffi::PyList_New(height as pyo3_ffi::Py_ssize_t);
@@ -632,8 +633,125 @@ impl PyDataFrame {
         })
     }
 
+    pub fn create_event_log(&self, generate_trace: PyObject, append_trace: PyObject) -> Py<PyDict> {
+        let case_glue: &str = "case:concept:name";
+        let default_traceid_key: &str = "concept:name"; 
+        let column_names: Vec<&str> = self.df.get_column_names();
+        let mut column_names_c_char: Vec<*mut pyo3_ffi::PyObject> = Vec::<*mut pyo3_ffi::PyObject>::new();
+        let generate_trace_c = generate_trace.into_ptr(); 
+        let append_trace_c = append_trace.into_ptr();
+        let mut case_concept_name_column: usize = 0;
+
+        Python::with_gil(|py| {
+
+            let rust_event_log = py.allow_threads(|| {
+                let group = &mut self.df.groupby([case_glue])
+                    .unwrap();
+                let groups: &mut GroupsProxy;
+                unsafe {
+                    groups = group.get_groups_mut();
+                }
+                groups.sort();
+
+                for (idx, name) in column_names.iter().enumerate() {
+                    if *name == case_glue {
+                        case_concept_name_column = idx;
+                    }
+                }
+                let temp_row_indexes =  groups.unwrap_idx().all();
+                let mut row_indexes = temp_row_indexes.to_vec();
+                row_indexes.par_sort();
+                row_indexes
+            });
+            
+            unsafe {
+
+                column_names.iter().for_each(|s| {
+                    let ptr = (*s).as_ptr() as *const core::ffi::c_char;
+                    let len = (*s).len() as pyo3_ffi::Py_ssize_t;
+                    column_names_c_char.push(pyo3_ffi::PyUnicode_FromStringAndSize(ptr, len));
+                });
+
+            }
+            unsafe {
+                let mut ptr = default_traceid_key.as_ptr() as *const core::ffi::c_char;
+                let mut len = default_traceid_key.len() as pyo3_ffi::Py_ssize_t;
+                let default_traceid_key_pyobject = pyo3_ffi::PyUnicode_FromStringAndSize(ptr, len);
+                
+                let datetime_type = (*pyo3_ffi::PyDateTimeAPI()).DateTimeType;
+                let datetime_function = (*pyo3_ffi::PyDateTimeAPI()).DateTime_FromDateAndTime;
+                let event_log = pyo3_ffi::PyDict_New();
+
+                let mut row = self.df.get_row(rust_event_log[0][0] as usize);
+
+                for curr_trace in 0..rust_event_log.len() {
+
+                    self.df.get_row_amortized(rust_event_log[curr_trace][0] as usize, &mut row);
+                    //getting key name from traces.attributes
+                    let mut dict_key_name: &str = "0";
+                    if let AnyValue::Utf8(v) = row.0.get_unchecked(case_concept_name_column) {
+                        dict_key_name = v;
+                    }
+                    ptr = dict_key_name.as_ptr() as *const core::ffi::c_char;
+                    len = dict_key_name.len() as pyo3_ffi::Py_ssize_t;
+                    let dict_key = pyo3_ffi::PyUnicode_FromStringAndSize(ptr, len);
+                    let trace_attr = pyo3_ffi::PyDict_New();
+                    pyo3_ffi::PyDict_SetItem(trace_attr, default_traceid_key_pyobject, dict_key);
+                    let trace = pyo3::ffi::PyObject_CallOneArg(generate_trace_c, trace_attr);
+                    pyo3_ffi::PyDict_SetItem(event_log, dict_key, trace);
+
+                    for (curr_list_position, df_index) in rust_event_log[curr_trace].iter().enumerate() {
+                        let curr_dict = pyo3_ffi::PyDict_New();
+                        self.df.get_row_amortized(*df_index as usize as usize, &mut row);
+                        for column in 0..column_names.len() {
+                            if column == case_concept_name_column { continue }
+
+                            if let AnyValue::Int64(v) = row.0.get_unchecked(column) {
+                                pyo3_ffi::PyDict_SetItem(curr_dict, column_names_c_char[column], pyo3_ffi::PyLong_FromLongLong(*v));
+                            } else if let AnyValue::Float64(v) = row.0.get_unchecked(column) {
+
+                                pyo3_ffi::PyDict_SetItem(curr_dict, column_names_c_char[column],pyo3_ffi::PyFloat_FromDouble(*v));
+                            } else if let AnyValue::Utf8(v) = row.0.get_unchecked(column) {
+                                let ptr1 = v.as_ptr() as *const core::ffi::c_char;
+                                let len1 = v.len() as pyo3_ffi::Py_ssize_t;
+                                pyo3_ffi::PyDict_SetItem(curr_dict, column_names_c_char[column], pyo3_ffi::PyUnicode_FromStringAndSize(ptr1, len1));
+                            } else if let AnyValue::Datetime(v, _tu, _tz) = row.0.get_unchecked(column) {
+                                let nanoseconds = v % 1_000_000_000;
+                                let microseconds = (nanoseconds / 1000) as i32;
+                                let rust_date = NaiveDateTime::from_timestamp(
+                                    (v / 1_000_000_000) as i64,
+                                    (nanoseconds) as u32,
+                                );
+                                let time = datetime_function(
+                                    rust_date.year() as i32, 
+                                    rust_date.month() as i32,
+                                    rust_date.day() as i32,
+                                    rust_date.hour() as i32,
+                                    rust_date.minute() as i32,
+                                    rust_date.second() as i32,
+                                    microseconds,
+                                    pyo3_ffi::Py_None(),
+                                    datetime_type,
+                                );
+                                pyo3_ffi::PyDict_SetItem(curr_dict, column_names_c_char[column], time);
+                            } else {
+                                pyo3_ffi::PyDict_SetItem(curr_dict, column_names_c_char[column], pyo3_ffi::Py_None());
+                            }
+                        }
+                        pyo3::ffi::PyObject_CallMethodOneArg(trace, append_trace_c, curr_dict);
+                    }
+                    
+                    
+
+                }
+
+                Py::from_owned_ptr(py, event_log) 
+            }
+        })
+    }
+
     #[staticmethod]
-    fn start_datetime_c_api() {
+    pub fn start_datetime_c_api() {
         unsafe {
             pyo3_ffi::PyDateTime_IMPORT();
         }
